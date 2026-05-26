@@ -21,6 +21,11 @@ namespace ODMatrix.Aggregation
         private static readonly object SyncRoot = new object();
         private static readonly List<ResidentTravelEvent> RecentEvents = new List<ResidentTravelEvent>(256);
         private static readonly Dictionary<string, DeduplicationState> DeduplicationStates = new Dictionary<string, DeduplicationState>(1024);
+        private static readonly int[] PurposeTotals = new int[Enum.GetValues(typeof(NormalizedPurpose)).Length];
+        private static readonly int[] PurposePrimaryTotals = new int[Enum.GetValues(typeof(NormalizedPurpose)).Length];
+        private static readonly int[] PurposeRetryTotals = new int[Enum.GetValues(typeof(NormalizedPurpose)).Length];
+        private static readonly int[] TravelerTotals = new int[Enum.GetValues(typeof(TravelerType)).Length];
+        private static readonly int[] SignalTotals = new int[Enum.GetValues(typeof(TravelSignalType)).Length];
 
         private static int s_totalCaptured;
         private static int s_totalPrimaryIntents;
@@ -41,6 +46,11 @@ namespace ODMatrix.Aggregation
                 s_totalResidentTransfers = 0;
                 s_totalTouristTransfers = 0;
                 s_totalComparePathRequests = 0;
+                ResetCounters(PurposeTotals);
+                ResetCounters(PurposePrimaryTotals);
+                ResetCounters(PurposeRetryTotals);
+                ResetCounters(TravelerTotals);
+                ResetCounters(SignalTotals);
             }
 
             ModLogger.Info("ResidentTravelCapture initialized. Counting period starts when the mod becomes active in the current session.");
@@ -54,6 +64,11 @@ namespace ODMatrix.Aggregation
             int totalResidentTransfers;
             int totalTouristTransfers;
             int totalComparePathRequests;
+            string purposeSummary;
+            string purposePrimarySummary;
+            string purposeRetrySummary;
+            string travelerSummary;
+            string signalSummary;
 
             lock (SyncRoot)
             {
@@ -63,6 +78,11 @@ namespace ODMatrix.Aggregation
                 totalResidentTransfers = s_totalResidentTransfers;
                 totalTouristTransfers = s_totalTouristTransfers;
                 totalComparePathRequests = s_totalComparePathRequests;
+                purposeSummary = FormatCounterSummary(PurposeTotals, typeof(NormalizedPurpose));
+                purposePrimarySummary = FormatCounterSummary(PurposePrimaryTotals, typeof(NormalizedPurpose));
+                purposeRetrySummary = FormatCounterSummary(PurposeRetryTotals, typeof(NormalizedPurpose));
+                travelerSummary = FormatCounterSummary(TravelerTotals, typeof(TravelerType));
+                signalSummary = FormatCounterSummary(SignalTotals, typeof(TravelSignalType));
 
                 RecentEvents.Clear();
                 DeduplicationStates.Clear();
@@ -72,6 +92,11 @@ namespace ODMatrix.Aggregation
                 s_totalResidentTransfers = 0;
                 s_totalTouristTransfers = 0;
                 s_totalComparePathRequests = 0;
+                ResetCounters(PurposeTotals);
+                ResetCounters(PurposePrimaryTotals);
+                ResetCounters(PurposeRetryTotals);
+                ResetCounters(TravelerTotals);
+                ResetCounters(SignalTotals);
             }
 
             ModLogger.Info(
@@ -81,6 +106,11 @@ namespace ODMatrix.Aggregation
                 "; residentTransfers=" + totalResidentTransfers +
                 "; touristTransfers=" + totalTouristTransfers +
                 "; comparePathRequests=" + totalComparePathRequests + ".");
+            ModLogger.Info("Intent summary by purpose: " + purposeSummary + ".");
+            ModLogger.Info("Intent summary by purpose primary: " + purposePrimarySummary + ".");
+            ModLogger.Info("Intent summary by purpose retry: " + purposeRetrySummary + ".");
+            ModLogger.Info("Intent summary by traveler: " + travelerSummary + ".");
+            ModLogger.Info("Intent summary by signal: " + signalSummary + ".");
         }
 
         internal static ResidentTravelEvent[] GetRecentEventsSnapshot()
@@ -177,11 +207,17 @@ namespace ODMatrix.Aggregation
                     state.LastSeenUtc = now;
                     state.HitCount = 1;
                     state.PrimaryCount = 1;
+                    state.LastPrimarySeenUtc = now;
+                    state.LastPrimaryReason = travelEvent.TransferReason;
+                    state.LastPrimarySourceTag = travelEvent.SourceTag;
                     DeduplicationStates[deduplicationKey] = state;
 
                     travelEvent.SignalType = TravelSignalType.PrimaryIntent;
                     travelEvent.IsPrimaryIntent = true;
                     travelEvent.DuplicateCountInWindow = 0;
+                    travelEvent.SecondsSincePreviousPrimary = 0d;
+                    travelEvent.PreviousPrimaryReason = string.Empty;
+                    travelEvent.PreviousPrimarySourceTag = string.Empty;
                     return;
                 }
 
@@ -194,13 +230,22 @@ namespace ODMatrix.Aggregation
                     travelEvent.SignalType = TravelSignalType.Retry;
                     travelEvent.IsPrimaryIntent = false;
                     travelEvent.DuplicateCountInWindow = state.HitCount - state.PrimaryCount;
+                    travelEvent.SecondsSincePreviousPrimary = (now - state.LastPrimarySeenUtc).TotalSeconds;
+                    travelEvent.PreviousPrimaryReason = state.LastPrimaryReason;
+                    travelEvent.PreviousPrimarySourceTag = state.LastPrimarySourceTag;
                     return;
                 }
 
                 state.PrimaryCount = state.HitCount;
+                state.LastPrimarySeenUtc = now;
+                state.LastPrimaryReason = travelEvent.TransferReason;
+                state.LastPrimarySourceTag = travelEvent.SourceTag;
                 travelEvent.SignalType = TravelSignalType.PrimaryIntent;
                 travelEvent.IsPrimaryIntent = true;
                 travelEvent.DuplicateCountInWindow = 0;
+                travelEvent.SecondsSincePreviousPrimary = 0d;
+                travelEvent.PreviousPrimaryReason = string.Empty;
+                travelEvent.PreviousPrimarySourceTag = string.Empty;
             }
         }
 
@@ -459,6 +504,18 @@ namespace ODMatrix.Aggregation
                     s_totalRetries++;
                 }
 
+                PurposeTotals[(int)travelEvent.Purpose]++;
+                TravelerTotals[(int)travelEvent.TravelerType]++;
+                SignalTotals[(int)travelEvent.SignalType]++;
+                if (travelEvent.IsPrimaryIntent)
+                {
+                    PurposePrimaryTotals[(int)travelEvent.Purpose]++;
+                }
+                else
+                {
+                    PurposeRetryTotals[(int)travelEvent.Purpose]++;
+                }
+
                 count = s_totalCaptured;
                 primaryCount = s_totalPrimaryIntents;
                 retryCount = s_totalRetries;
@@ -474,6 +531,7 @@ namespace ODMatrix.Aggregation
             else if (retryCount <= 10 || retryCount % 250 == 0)
             {
                 ModLogger.Info("Travel retry #" + retryCount + " (transfer #" + count + "): " + travelEvent);
+                ModLogger.Info("Retry diagnostic #" + retryCount + ": Key=" + travelEvent.DeduplicationKey + "; Purpose=" + travelEvent.Purpose + "; WindowSeconds=" + travelEvent.DeduplicationWindowSeconds + "; SecondsSincePreviousPrimary=" + travelEvent.SecondsSincePreviousPrimary.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "; PreviousPrimaryReason=" + travelEvent.PreviousPrimaryReason + "; PreviousPrimarySource=" + travelEvent.PreviousPrimarySourceTag + ".");
             }
         }
 
@@ -499,13 +557,42 @@ namespace ODMatrix.Aggregation
             return Singleton<CitizenManager>.instance.m_instances.m_buffer[(int)citizenInstanceId].GetLastFramePosition();
         }
 
+        private static void ResetCounters(int[] counters)
+        {
+            for (int i = 0; i < counters.Length; i++)
+            {
+                counters[i] = 0;
+            }
+        }
+
+        private static string FormatCounterSummary(int[] counters, Type enumType)
+        {
+            string[] names = Enum.GetNames(enumType);
+            System.Array values = Enum.GetValues(enumType);
+            List<string> parts = new List<string>(names.Length);
+
+            for (int i = 0; i < values.Length; i++)
+            {
+                int index = (int)values.GetValue(i);
+                parts.Add(names[i] + "=" + counters[index]);
+            }
+
+            return string.Join(", ", parts.ToArray());
+        }
+
         private sealed class DeduplicationState
         {
             public DateTime LastSeenUtc;
 
+            public DateTime LastPrimarySeenUtc;
+
             public int HitCount;
 
             public int PrimaryCount;
+
+            public string LastPrimaryReason;
+
+            public string LastPrimarySourceTag;
         }
     }
 }
