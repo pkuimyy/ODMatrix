@@ -17,6 +17,7 @@ namespace ODMatrix.Aggregation
         private const int LeisureDeduplicationWindowSeconds = 45;
         private const int SocialDeduplicationWindowSeconds = 60;
         private const int OtherDeduplicationWindowSeconds = 30;
+        private const double VeryShortRetryIntervalSeconds = 3d;
 
         private static readonly object SyncRoot = new object();
         private static readonly List<ResidentTravelEvent> RecentEvents = new List<ResidentTravelEvent>(256);
@@ -33,6 +34,9 @@ namespace ODMatrix.Aggregation
         private static int s_totalResidentTransfers;
         private static int s_totalTouristTransfers;
         private static int s_totalComparePathRequests;
+        private static int s_sameOriginAndDestinationRetries;
+        private static int s_veryShortIntervalRetries;
+        private static int s_multipleRetriesInWindow;
 
         internal static void Initialize()
         {
@@ -46,6 +50,9 @@ namespace ODMatrix.Aggregation
                 s_totalResidentTransfers = 0;
                 s_totalTouristTransfers = 0;
                 s_totalComparePathRequests = 0;
+                s_sameOriginAndDestinationRetries = 0;
+                s_veryShortIntervalRetries = 0;
+                s_multipleRetriesInWindow = 0;
                 ResetCounters(PurposeTotals);
                 ResetCounters(PurposePrimaryTotals);
                 ResetCounters(PurposeRetryTotals);
@@ -64,9 +71,13 @@ namespace ODMatrix.Aggregation
             int totalResidentTransfers;
             int totalTouristTransfers;
             int totalComparePathRequests;
+            int sameOriginAndDestinationRetries;
+            int veryShortIntervalRetries;
+            int multipleRetriesInWindow;
             string purposeSummary;
             string purposePrimarySummary;
             string purposeRetrySummary;
+            string purposeRetryRateSummary;
             string travelerSummary;
             string signalSummary;
 
@@ -78,9 +89,13 @@ namespace ODMatrix.Aggregation
                 totalResidentTransfers = s_totalResidentTransfers;
                 totalTouristTransfers = s_totalTouristTransfers;
                 totalComparePathRequests = s_totalComparePathRequests;
+                sameOriginAndDestinationRetries = s_sameOriginAndDestinationRetries;
+                veryShortIntervalRetries = s_veryShortIntervalRetries;
+                multipleRetriesInWindow = s_multipleRetriesInWindow;
                 purposeSummary = FormatCounterSummary(PurposeTotals, typeof(NormalizedPurpose));
                 purposePrimarySummary = FormatCounterSummary(PurposePrimaryTotals, typeof(NormalizedPurpose));
                 purposeRetrySummary = FormatCounterSummary(PurposeRetryTotals, typeof(NormalizedPurpose));
+                purposeRetryRateSummary = FormatRetryRateSummary();
                 travelerSummary = FormatCounterSummary(TravelerTotals, typeof(TravelerType));
                 signalSummary = FormatCounterSummary(SignalTotals, typeof(TravelSignalType));
 
@@ -92,6 +107,9 @@ namespace ODMatrix.Aggregation
                 s_totalResidentTransfers = 0;
                 s_totalTouristTransfers = 0;
                 s_totalComparePathRequests = 0;
+                s_sameOriginAndDestinationRetries = 0;
+                s_veryShortIntervalRetries = 0;
+                s_multipleRetriesInWindow = 0;
                 ResetCounters(PurposeTotals);
                 ResetCounters(PurposePrimaryTotals);
                 ResetCounters(PurposeRetryTotals);
@@ -109,8 +127,14 @@ namespace ODMatrix.Aggregation
             ModLogger.Info("Intent summary by purpose: " + purposeSummary + ".");
             ModLogger.Info("Intent summary by purpose primary: " + purposePrimarySummary + ".");
             ModLogger.Info("Intent summary by purpose retry: " + purposeRetrySummary + ".");
+            ModLogger.Info("Intent summary by purpose retry rate: " + purposeRetryRateSummary + ".");
             ModLogger.Info("Intent summary by traveler: " + travelerSummary + ".");
             ModLogger.Info("Intent summary by signal: " + signalSummary + ".");
+            ModLogger.Info(
+                "Retry diagnostic summary: sameOriginAndDestination=" + sameOriginAndDestinationRetries +
+                "; veryShortInterval=" + veryShortIntervalRetries +
+                "; multipleRetriesInWindow=" + multipleRetriesInWindow + ".");
+            ModLogger.Info("Intent baseline for downstream OD: use PrimaryIntent as the main input; keep Retry only for diagnostics and threshold review.");
         }
 
         internal static ResidentTravelEvent[] GetRecentEventsSnapshot()
@@ -218,6 +242,7 @@ namespace ODMatrix.Aggregation
                     travelEvent.SecondsSincePreviousPrimary = 0d;
                     travelEvent.PreviousPrimaryReason = string.Empty;
                     travelEvent.PreviousPrimarySourceTag = string.Empty;
+                     travelEvent.RetryDiagnosticFlags = RetryDiagnosticFlags.None;
                     return;
                 }
 
@@ -233,6 +258,7 @@ namespace ODMatrix.Aggregation
                     travelEvent.SecondsSincePreviousPrimary = (now - state.LastPrimarySeenUtc).TotalSeconds;
                     travelEvent.PreviousPrimaryReason = state.LastPrimaryReason;
                     travelEvent.PreviousPrimarySourceTag = state.LastPrimarySourceTag;
+                     travelEvent.RetryDiagnosticFlags = BuildRetryDiagnosticFlags(travelEvent);
                     return;
                 }
 
@@ -246,7 +272,32 @@ namespace ODMatrix.Aggregation
                 travelEvent.SecondsSincePreviousPrimary = 0d;
                 travelEvent.PreviousPrimaryReason = string.Empty;
                 travelEvent.PreviousPrimarySourceTag = string.Empty;
+                 travelEvent.RetryDiagnosticFlags = RetryDiagnosticFlags.None;
             }
+        }
+
+        private static RetryDiagnosticFlags BuildRetryDiagnosticFlags(ResidentTravelEvent travelEvent)
+        {
+            RetryDiagnosticFlags flags = RetryDiagnosticFlags.None;
+
+            if (travelEvent.OriginBuilding != 0 &&
+                travelEvent.DestinationBuilding != 0 &&
+                travelEvent.OriginBuilding == travelEvent.DestinationBuilding)
+            {
+                flags |= RetryDiagnosticFlags.SameOriginAndDestinationBuilding;
+            }
+
+            if (travelEvent.SecondsSincePreviousPrimary <= VeryShortRetryIntervalSeconds)
+            {
+                flags |= RetryDiagnosticFlags.VeryShortRetryInterval;
+            }
+
+            if (travelEvent.DuplicateCountInWindow >= 2)
+            {
+                flags |= RetryDiagnosticFlags.MultipleRetriesInWindow;
+            }
+
+            return flags;
         }
 
         private static string BuildDeduplicationKey(ResidentTravelEvent travelEvent)
@@ -502,6 +553,20 @@ namespace ODMatrix.Aggregation
                 else
                 {
                     s_totalRetries++;
+                    if ((travelEvent.RetryDiagnosticFlags & RetryDiagnosticFlags.SameOriginAndDestinationBuilding) != 0)
+                    {
+                        s_sameOriginAndDestinationRetries++;
+                    }
+
+                    if ((travelEvent.RetryDiagnosticFlags & RetryDiagnosticFlags.VeryShortRetryInterval) != 0)
+                    {
+                        s_veryShortIntervalRetries++;
+                    }
+
+                    if ((travelEvent.RetryDiagnosticFlags & RetryDiagnosticFlags.MultipleRetriesInWindow) != 0)
+                    {
+                        s_multipleRetriesInWindow++;
+                    }
                 }
 
                 PurposeTotals[(int)travelEvent.Purpose]++;
@@ -531,7 +596,7 @@ namespace ODMatrix.Aggregation
             else if (retryCount <= 10 || retryCount % 250 == 0)
             {
                 ModLogger.Info("Travel retry #" + retryCount + " (transfer #" + count + "): " + travelEvent);
-                ModLogger.Info("Retry diagnostic #" + retryCount + ": Key=" + travelEvent.DeduplicationKey + "; Purpose=" + travelEvent.Purpose + "; WindowSeconds=" + travelEvent.DeduplicationWindowSeconds + "; SecondsSincePreviousPrimary=" + travelEvent.SecondsSincePreviousPrimary.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "; PreviousPrimaryReason=" + travelEvent.PreviousPrimaryReason + "; PreviousPrimarySource=" + travelEvent.PreviousPrimarySourceTag + ".");
+                ModLogger.Info("Retry diagnostic #" + retryCount + ": Key=" + travelEvent.DeduplicationKey + "; Purpose=" + travelEvent.Purpose + "; WindowSeconds=" + travelEvent.DeduplicationWindowSeconds + "; SecondsSincePreviousPrimary=" + travelEvent.SecondsSincePreviousPrimary.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "; PreviousPrimaryReason=" + travelEvent.PreviousPrimaryReason + "; PreviousPrimarySource=" + travelEvent.PreviousPrimarySourceTag + "; RetryFlags=" + travelEvent.RetryDiagnosticFlags + ".");
             }
         }
 
@@ -575,6 +640,26 @@ namespace ODMatrix.Aggregation
             {
                 int index = (int)values.GetValue(i);
                 parts.Add(names[i] + "=" + counters[index]);
+            }
+
+            return string.Join(", ", parts.ToArray());
+        }
+
+        private static string FormatRetryRateSummary()
+        {
+            System.Array values = Enum.GetValues(typeof(NormalizedPurpose));
+            List<string> parts = new List<string>(values.Length);
+
+            for (int i = 0; i < values.Length; i++)
+            {
+                int index = (int)values.GetValue(i);
+                int total = PurposeTotals[index];
+                int retries = PurposeRetryTotals[index];
+                double rate = total == 0 ? 0d : (double)retries / total;
+                parts.Add(
+                    values.GetValue(i) + "=" +
+                    rate.ToString("P1", System.Globalization.CultureInfo.InvariantCulture) +
+                    " (" + retries + "/" + total + ")");
             }
 
             return string.Join(", ", parts.ToArray());

@@ -21,4 +21,13 @@ namespace ODMatrix.Models
         Social = 4,
         Other = 5
     }
+
+    [System.Flags]
+    internal enum RetryDiagnosticFlags
+    {
+        None = 0,
+        SameOriginAndDestinationBuilding = 1,
+        VeryShortRetryInterval = 2,
+        MultipleRetriesInWindow = 4
+    }
 }

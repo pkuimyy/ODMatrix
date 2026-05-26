@@ -34,6 +34,8 @@ namespace ODMatrix.Models
 
         public string PreviousPrimarySourceTag { get; set; }
 
+        public RetryDiagnosticFlags RetryDiagnosticFlags { get; set; }
+
         public string CitizenLocation { get; set; }
 
         public ushort HomeBuilding { get; set; }
@@ -62,7 +64,7 @@ namespace ODMatrix.Models
         {
             return string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
-                "CapturedAtUtc={0:o}; Traveler={1}; CitizenId={2}; Reason={3}; Purpose={4}; Signal={5}; IsPrimaryIntent={6}; DuplicateCountInWindow={7}; DeduplicationWindowSeconds={8}; SecondsSincePreviousPrimary={9:F3}; PreviousPrimaryReason={10}; PreviousPrimarySource={11}; Location={12}; Origin=({13:F2},{14:F2},{15:F2})[{16}]; Destination=({17:F2},{18:F2},{19:F2})[{20}]; Buildings(H={21},W={22},V={23},O={24},D={25}); Offer={26}/{27}; Source={28}",
+                "CapturedAtUtc={0:o}; Traveler={1}; CitizenId={2}; Reason={3}; Purpose={4}; Signal={5}; IsPrimaryIntent={6}; DuplicateCountInWindow={7}; DeduplicationWindowSeconds={8}; SecondsSincePreviousPrimary={9:F3}; PreviousPrimaryReason={10}; PreviousPrimarySource={11}; RetryFlags={12}; Location={13}; Origin=({14:F2},{15:F2},{16:F2})[{17}]; Destination=({18:F2},{19:F2},{20:F2})[{21}]; Buildings(H={22},W={23},V={24},O={25},D={26}); Offer={27}/{28}; Source={29}",
                 CapturedAtUtc,
                 TravelerType,
                 CitizenId,
@@ -75,6 +77,7 @@ namespace ODMatrix.Models
                 SecondsSincePreviousPrimary,
                 PreviousPrimaryReason,
                 PreviousPrimarySourceTag,
+                RetryDiagnosticFlags,
                 CitizenLocation,
                 OriginPosition.x,
                 OriginPosition.y,
