@@ -67,11 +67,9 @@
     <Compile Include="src\Bootstrap\ODMatrixMod.cs" />
     <Compile Include="src\Diagnostics\ModLogger.cs" />
     <Compile Include="src\Diagnostics\ReflectionProbe.cs" />
-    <Compile Include="src\Models\ResidentTravelEvent.cs" />
+    <Compile Include="src\Models\TravelRecord.cs" />
     <Compile Include="src\Patches\ResidentAIStartTransferPatch.cs" />
-    <Compile Include="src\Models\TravelClassification.cs" />
     <Compile Include="src\Patches\TouristAIStartTransferPatch.cs" />
-    <Compile Include="src\Patches\PathManagerCreatePathPatch.cs" />
     <Compile Include="src\ModVersion.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

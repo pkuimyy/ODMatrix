@@ -1,5 +1,6 @@
 using HarmonyLib;
 using ODMatrix.Aggregation;
+using ODMatrix.Models;
 
 namespace ODMatrix.Patches
 {
@@ -8,7 +9,7 @@ namespace ODMatrix.Patches
     {
         private static void Prefix(uint citizenID, ref Citizen data, TransferManager.TransferReason reason, TransferManager.TransferOffer offer)
         {
-            ResidentTravelCapture.RecordResidentTransfer(citizenID, data, reason, offer, "ResidentAI.StartTransfer");
+            ResidentTravelCapture.RecordTransfer(TravelerType.Resident, citizenID, data, reason, offer);
         }
     }
 }

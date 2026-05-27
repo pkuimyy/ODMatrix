@@ -1,38 +1,30 @@
-using System;
 using ColossalFramework;
-using UnityEngine;
 using ODMatrix.Models;
+using UnityEngine;
 
 namespace ODMatrix.Aggregation
 {
     internal static class TravelLocationResolver
     {
-        internal static void PopulateOrigin(Citizen citizenData, ResidentTravelEvent travelEvent)
+        internal static void PopulateOrigin(Citizen citizenData, ref TravelRecord record)
         {
             if (citizenData.m_instance != 0)
             {
-                travelEvent.OriginPosition = GetCitizenInstancePosition(citizenData.m_instance);
-                travelEvent.OriginResolvedFrom = "CitizenInstance";
+                Vector3 position = GetCitizenInstancePosition(citizenData.m_instance);
+                record.OriginX = position.x;
+                record.OriginZ = position.z;
+                record.OriginResolvedFrom = LocationResolveType.CitizenInstance;
                 return;
             }
 
-            if (TryAssignBuildingOrigin(citizenData.m_visitBuilding, "VisitBuilding", travelEvent))
-            {
-                return;
-            }
-            if (TryAssignBuildingOrigin(citizenData.m_homeBuilding, "HomeBuilding", travelEvent))
-            {
-                return;
-            }
-            if (TryAssignBuildingOrigin(citizenData.m_workBuilding, "WorkBuilding", travelEvent))
-            {
-                return;
-            }
+            if (TryAssignBuildingOrigin(citizenData.m_visitBuilding, LocationResolveType.VisitBuilding, ref record)) return;
+            if (TryAssignBuildingOrigin(citizenData.m_homeBuilding, LocationResolveType.HomeBuilding, ref record)) return;
+            if (TryAssignBuildingOrigin(citizenData.m_workBuilding, LocationResolveType.WorkBuilding, ref record)) return;
 
-            travelEvent.OriginResolvedFrom = "Unavailable";
+            record.OriginResolvedFrom = LocationResolveType.Unavailable;
         }
 
-        internal static void PopulateDestination(TransferManager.TransferOffer offer, ResidentTravelEvent travelEvent)
+        internal static void PopulateDestination(TransferManager.TransferOffer offer, ref TravelRecord record)
         {
             ushort buildingId = offer.m_object.Building;
             if (buildingId != 0)
@@ -40,9 +32,10 @@ namespace ODMatrix.Aggregation
                 Vector3 position;
                 if (TryGetBuildingPosition(buildingId, out position))
                 {
-                    travelEvent.DestinationBuilding = buildingId;
-                    travelEvent.DestinationPosition = position;
-                    travelEvent.DestinationResolvedFrom = "Offer.Building";
+                    record.DestBuilding = buildingId;
+                    record.DestX = position.x;
+                    record.DestZ = position.z;
+                    record.DestResolvedFrom = LocationResolveType.OfferBuilding;
                     return;
                 }
             }
@@ -50,8 +43,10 @@ namespace ODMatrix.Aggregation
             ushort citizenInstanceId = offer.m_object.CitizenInstance;
             if (citizenInstanceId != 0)
             {
-                travelEvent.DestinationPosition = GetCitizenInstancePosition(citizenInstanceId);
-                travelEvent.DestinationResolvedFrom = "Offer.CitizenInstance";
+                Vector3 position = GetCitizenInstancePosition(citizenInstanceId);
+                record.DestX = position.x;
+                record.DestZ = position.z;
+                record.DestResolvedFrom = LocationResolveType.OfferCitizenInstance;
                 return;
             }
 
@@ -59,49 +54,44 @@ namespace ODMatrix.Aggregation
             if (offerCitizenId != 0)
             {
                 Citizen offerCitizen = Singleton<CitizenManager>.instance.m_citizens.m_buffer[(int)offerCitizenId];
-                if (TryAssignOfferCitizenDestination(offerCitizen, travelEvent))
-                {
-                    return;
-                }
+                if (TryAssignOfferCitizenDestination(offerCitizen, ref record)) return;
             }
 
-            travelEvent.DestinationResolvedFrom = "OfferObjectUnavailable";
+            record.DestResolvedFrom = LocationResolveType.Unavailable;
         }
 
-        private static bool TryAssignBuildingOrigin(ushort buildingId, string resolvedFrom, ResidentTravelEvent travelEvent)
+        private static bool TryAssignBuildingOrigin(ushort buildingId, LocationResolveType resolveType, ref TravelRecord record)
         {
-            if (buildingId == 0)
-            {
-                return false;
-            }
+            if (buildingId == 0) return false;
 
             Vector3 position;
-            if (!TryGetBuildingPosition(buildingId, out position))
-            {
-                return false;
-            }
+            if (!TryGetBuildingPosition(buildingId, out position)) return false;
 
-            travelEvent.OriginBuilding = buildingId;
-            travelEvent.OriginPosition = position;
-            travelEvent.OriginResolvedFrom = resolvedFrom;
+            record.OriginBuilding = buildingId;
+            record.OriginX = position.x;
+            record.OriginZ = position.z;
+            record.OriginResolvedFrom = resolveType;
             return true;
         }
 
-        private static bool TryAssignOfferCitizenDestination(Citizen citizenData, ResidentTravelEvent travelEvent)
+        private static bool TryAssignOfferCitizenDestination(Citizen citizenData, ref TravelRecord record)
         {
             if (citizenData.m_instance != 0)
             {
-                travelEvent.DestinationPosition = GetCitizenInstancePosition(citizenData.m_instance);
-                travelEvent.DestinationResolvedFrom = "Offer.Citizen";
+                Vector3 position = GetCitizenInstancePosition(citizenData.m_instance);
+                record.DestX = position.x;
+                record.DestZ = position.z;
+                record.DestResolvedFrom = LocationResolveType.OfferCitizenInstance;
                 return true;
             }
 
-            Vector3 position;
-            if (citizenData.m_visitBuilding != 0 && TryGetBuildingPosition(citizenData.m_visitBuilding, out position))
+            Vector3 bldgPosition;
+            if (citizenData.m_visitBuilding != 0 && TryGetBuildingPosition(citizenData.m_visitBuilding, out bldgPosition))
             {
-                travelEvent.DestinationBuilding = citizenData.m_visitBuilding;
-                travelEvent.DestinationPosition = position;
-                travelEvent.DestinationResolvedFrom = "Offer.Citizen.VisitBuilding";
+                record.DestBuilding = citizenData.m_visitBuilding;
+                record.DestX = bldgPosition.x;
+                record.DestZ = bldgPosition.z;
+                record.DestResolvedFrom = LocationResolveType.OfferCitizenVisitBuilding;
                 return true;
             }
 
@@ -115,18 +105,13 @@ namespace ODMatrix.Aggregation
                 position = Vector3.zero;
                 return false;
             }
-
             position = Singleton<BuildingManager>.instance.m_buildings.m_buffer[(int)buildingId].m_position;
             return true;
         }
 
         private static Vector3 GetCitizenInstancePosition(ushort citizenInstanceId)
         {
-            if (citizenInstanceId == 0)
-            {
-                return Vector3.zero;
-            }
-
+            if (citizenInstanceId == 0) return Vector3.zero;
             return Singleton<CitizenManager>.instance.m_instances.m_buffer[(int)citizenInstanceId].GetLastFramePosition();
         }
     }
