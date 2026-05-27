@@ -10,12 +10,19 @@ namespace ODMatrix.Aggregation
         internal static void Initialize()
         {
             TravelMetricsCollector.Reset();
-            ModLogger.Info("ResidentTravelCapture initialized. Raw streaming mode activated.");
+            TravelRecordBuffer.Initialize();
+            ModLogger.Info("ResidentTravelCapture initialized. Zero-GC streaming mode activated.");
         }
 
         internal static void Shutdown()
         {
+            TravelRecordBuffer.Shutdown();
             TravelMetricsCollector.LogSummaryReport();
+
+            if (TravelRecordBuffer.DroppedRecords > 0)
+            {
+                ModLogger.Warn("Overload Protection triggered. Dropped records: " + TravelRecordBuffer.DroppedRecords);
+            }
         }
 
         internal static void RecordTransfer(TravelerType travelerType, uint citizenId, Citizen citizenData, TransferManager.TransferReason reason, TransferManager.TransferOffer offer)
@@ -37,6 +44,8 @@ namespace ODMatrix.Aggregation
                 TravelLocationResolver.PopulateDestination(offer, ref record);
 
                 TravelMetricsCollector.IncrementCaptured();
+
+                TravelRecordBuffer.Enqueue(ref record);
             }
             catch (Exception ex)
             {
