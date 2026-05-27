@@ -14,9 +14,9 @@ namespace ODMatrix.Models
 
         public string SourceTag { get; set; }
 
-        public string TransferReason { get; set; }
+        public string TransferReasonTag { get; set; }
 
-        public NormalizedPurpose Purpose { get; set; }
+        public TransferManager.TransferReason TransferReason { get; set; }
 
         public TravelSignalType SignalType { get; set; }
 
@@ -64,12 +64,12 @@ namespace ODMatrix.Models
         {
             return string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
-                "CapturedAtUtc={0:o}; Traveler={1}; CitizenId={2}; Reason={3}; Purpose={4}; Signal={5}; IsPrimaryIntent={6}; DuplicateCountInWindow={7}; DeduplicationWindowSeconds={8}; SecondsSincePreviousPrimary={9:F3}; PreviousPrimaryReason={10}; PreviousPrimarySource={11}; RetryFlags={12}; Location={13}; Origin=({14:F2},{15:F2},{16:F2})[{17}]; Destination=({18:F2},{19:F2},{20:F2})[{21}]; Buildings(H={22},W={23},V={24},O={25},D={26}); Offer={27}/{28}; Source={29}",
+                "CapturedAtUtc={0:o}; Traveler={1}; CitizenId={2}; TransferReason={3}; TransferReasonTag={4}; Signal={5}; IsPrimaryIntent={6}; DuplicateCountInWindow={7}; DeduplicationWindowSeconds={8}; SecondsSincePreviousPrimary={9:F3}; PreviousPrimaryReason={10}; PreviousPrimarySource={11}; RetryFlags={12}; Location={13}; Origin=({14:F2},{15:F2},{16:F2})[{17}]; Destination=({18:F2},{19:F2},{20:F2})[{21}]; Buildings(H={22},W={23},V={24},O={25},D={26}); Offer={27}/{28}; Source={29}",
                 CapturedAtUtc,
                 TravelerType,
                 CitizenId,
                 TransferReason,
-                Purpose,
+                TransferReasonTag,
                 SignalType,
                 IsPrimaryIntent,
                 DuplicateCountInWindow,

@@ -7,9 +7,7 @@ namespace ODMatrix.Diagnostics
 {
     internal static class TravelMetricsCollector
     {
-        private static readonly int[] PurposeTotals = new int[Enum.GetValues(typeof(NormalizedPurpose)).Length];
-        private static readonly int[] PurposePrimaryTotals = new int[Enum.GetValues(typeof(NormalizedPurpose)).Length];
-        private static readonly int[] PurposeRetryTotals = new int[Enum.GetValues(typeof(NormalizedPurpose)).Length];
+        private static readonly int[] PurposeTotals = new int[Enum.GetValues(typeof(TransferManager.TransferReason)).Length];
         private static readonly int[] TravelerTotals = new int[Enum.GetValues(typeof(TravelerType)).Length];
         private static readonly int[] SignalTotals = new int[Enum.GetValues(typeof(TravelSignalType)).Length];
 
@@ -35,8 +33,6 @@ namespace ODMatrix.Diagnostics
             VeryShortIntervalRetries = 0;
             MultipleRetriesInWindow = 0;
             ResetCounters(PurposeTotals);
-            ResetCounters(PurposePrimaryTotals);
-            ResetCounters(PurposeRetryTotals);
             ResetCounters(TravelerTotals);
             ResetCounters(SignalTotals);
         }
@@ -61,13 +57,10 @@ namespace ODMatrix.Diagnostics
             if (travelEvent.IsPrimaryIntent)
             {
                 TotalPrimaryIntents++;
-                PurposePrimaryTotals[(int)travelEvent.Purpose]++;
             }
             else
             {
                 TotalRetries++;
-                PurposeRetryTotals[(int)travelEvent.Purpose]++;
-
                 if ((travelEvent.RetryDiagnosticFlags & RetryDiagnosticFlags.SameOriginAndDestinationBuilding) != 0)
                 {
                     SameOriginAndDestinationRetries++;
@@ -82,17 +75,13 @@ namespace ODMatrix.Diagnostics
                 }
             }
 
-            PurposeTotals[(int)travelEvent.Purpose]++;
             TravelerTotals[(int)travelEvent.TravelerType]++;
             SignalTotals[(int)travelEvent.SignalType]++;
         }
 
         internal static void LogSummaryReport()
         {
-            string purposeSummary = FormatCounterSummary(PurposeTotals, typeof(NormalizedPurpose));
-            string purposePrimarySummary = FormatCounterSummary(PurposePrimaryTotals, typeof(NormalizedPurpose));
-            string purposeRetrySummary = FormatCounterSummary(PurposeRetryTotals, typeof(NormalizedPurpose));
-            string purposeRetryRateSummary = FormatRetryRateSummary();
+            string purposeSummary = FormatCounterSummary(PurposeTotals, typeof(TransferManager.TransferReason));
             string travelerSummary = FormatCounterSummary(TravelerTotals, typeof(TravelerType));
             string signalSummary = FormatCounterSummary(SignalTotals, typeof(TravelSignalType));
 
@@ -104,9 +93,6 @@ namespace ODMatrix.Diagnostics
                 "; touristTransfers=" + TotalTouristTransfers +
                 "; comparePathRequests=" + TotalComparePathRequests + ".");
             ModLogger.Info("Intent summary by purpose: " + purposeSummary + ".");
-            ModLogger.Info("Intent summary by purpose primary: " + purposePrimarySummary + ".");
-            ModLogger.Info("Intent summary by purpose retry: " + purposeRetrySummary + ".");
-            ModLogger.Info("Intent summary by purpose retry rate: " + purposeRetryRateSummary + ".");
             ModLogger.Info("Intent summary by traveler: " + travelerSummary + ".");
             ModLogger.Info("Intent summary by signal: " + signalSummary + ".");
             ModLogger.Info(
@@ -139,24 +125,5 @@ namespace ODMatrix.Diagnostics
             return string.Join(", ", parts.ToArray());
         }
 
-        private static string FormatRetryRateSummary()
-        {
-            Array values = Enum.GetValues(typeof(NormalizedPurpose));
-            List<string> parts = new List<string>(values.Length);
-
-            for (int i = 0; i < values.Length; i++)
-            {
-                int index = (int)values.GetValue(i);
-                int total = PurposeTotals[index];
-                int retries = PurposeRetryTotals[index];
-                double rate = total == 0 ? 0d : (double)retries / total;
-                parts.Add(
-                    values.GetValue(i) + "=" +
-                    rate.ToString("P1", System.Globalization.CultureInfo.InvariantCulture) +
-                    " (" + retries + "/" + total + ")");
-            }
-
-            return string.Join(", ", parts.ToArray());
-        }
     }
 }

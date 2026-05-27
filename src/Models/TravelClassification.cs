@@ -12,16 +12,6 @@ namespace ODMatrix.Models
         Retry = 1
     }
 
-    internal enum NormalizedPurpose
-    {
-        Work = 0,
-        School = 1,
-        Shopping = 2,
-        Leisure = 3,
-        Social = 4,
-        Other = 5
-    }
-
     [System.Flags]
     internal enum RetryDiagnosticFlags
     {

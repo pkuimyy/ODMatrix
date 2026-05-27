@@ -7,36 +7,6 @@ namespace ODMatrix.Aggregation
 {
     internal static class TravelLocationResolver
     {
-        internal static NormalizedPurpose NormalizePurpose(TransferManager.TransferReason reason)
-        {
-            string reasonName = reason.ToString();
-
-            if (reasonName.StartsWith("Worker", StringComparison.Ordinal))
-            {
-                return NormalizedPurpose.Work;
-            }
-            if (reasonName.StartsWith("Student", StringComparison.Ordinal))
-            {
-                return NormalizedPurpose.School;
-            }
-            if (reasonName.StartsWith("Shopping", StringComparison.Ordinal))
-            {
-                return NormalizedPurpose.Shopping;
-            }
-            if (reasonName.StartsWith("Entertainment", StringComparison.Ordinal))
-            {
-                return NormalizedPurpose.Leisure;
-            }
-            if (reasonName.StartsWith("Single", StringComparison.Ordinal) ||
-                reasonName.StartsWith("Partner", StringComparison.Ordinal) ||
-                reasonName.StartsWith("Family", StringComparison.Ordinal))
-            {
-                return NormalizedPurpose.Social;
-            }
-
-            return NormalizedPurpose.Other;
-        }
-
         internal static void PopulateOrigin(Citizen citizenData, ResidentTravelEvent travelEvent)
         {
             if (citizenData.m_instance != 0)

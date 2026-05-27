@@ -36,7 +36,7 @@ namespace ODMatrix.Aggregation
         {
             DateTime now = travelEvent.CapturedAtUtc;
             string deduplicationKey = BuildDeduplicationKey(travelEvent);
-            int deduplicationWindowSeconds = GetDeduplicationWindowSeconds(travelEvent.Purpose);
+            int deduplicationWindowSeconds = GetDeduplicationWindowSeconds();
 
             travelEvent.DeduplicationKey = deduplicationKey;
             travelEvent.DeduplicationWindowSeconds = deduplicationWindowSeconds;
@@ -51,7 +51,7 @@ namespace ODMatrix.Aggregation
                 state.HitCount = 1;
                 state.PrimaryCount = 1;
                 state.LastPrimarySeenUtc = now;
-                state.LastPrimaryReason = travelEvent.TransferReason;
+                state.LastPrimaryReason = travelEvent.TransferReasonTag;
                 state.LastPrimarySourceTag = travelEvent.SourceTag;
                 DeduplicationStates[deduplicationKey] = state;
 
@@ -83,7 +83,7 @@ namespace ODMatrix.Aggregation
 
             state.PrimaryCount = state.HitCount;
             state.LastPrimarySeenUtc = now;
-            state.LastPrimaryReason = travelEvent.TransferReason;
+            state.LastPrimaryReason = travelEvent.TransferReasonTag;
             state.LastPrimarySourceTag = travelEvent.SourceTag;
             travelEvent.SignalType = TravelSignalType.PrimaryIntent;
             travelEvent.IsPrimaryIntent = true;
@@ -125,7 +125,7 @@ namespace ODMatrix.Aggregation
                 "{0}|{1}|{2}|{3}|{4}|{5}",
                 travelEvent.TravelerType,
                 travelEvent.CitizenId,
-                travelEvent.Purpose,
+                travelEvent.TransferReasonTag,
                 travelEvent.OfferObjectType,
                 GetDestinationIdentity(travelEvent),
                 GetOriginIdentity(travelEvent));
@@ -149,23 +149,9 @@ namespace ODMatrix.Aggregation
             return travelEvent.OriginResolvedFrom;
         }
 
-        private static int GetDeduplicationWindowSeconds(NormalizedPurpose purpose)
+        private static int GetDeduplicationWindowSeconds()
         {
-            switch (purpose)
-            {
-                case NormalizedPurpose.Work:
-                    return WorkDeduplicationWindowSeconds;
-                case NormalizedPurpose.School:
-                    return SchoolDeduplicationWindowSeconds;
-                case NormalizedPurpose.Shopping:
-                    return ShoppingDeduplicationWindowSeconds;
-                case NormalizedPurpose.Leisure:
-                    return LeisureDeduplicationWindowSeconds;
-                case NormalizedPurpose.Social:
-                    return SocialDeduplicationWindowSeconds;
-                default:
-                    return OtherDeduplicationWindowSeconds;
-            }
+            return OtherDeduplicationWindowSeconds;
         }
 
         private static void CleanupDeduplicationStates(DateTime now)

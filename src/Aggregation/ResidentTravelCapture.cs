@@ -93,8 +93,8 @@ namespace ODMatrix.Aggregation
             travelEvent.TravelerType = travelerType;
             travelEvent.CitizenId = citizenId;
             travelEvent.SourceTag = sourceTag;
-            travelEvent.TransferReason = reason.ToString();
-            travelEvent.Purpose = TravelLocationResolver.NormalizePurpose(reason);
+            travelEvent.TransferReason = reason;
+            travelEvent.TransferReasonTag = reason.ToString();
             travelEvent.CitizenLocation = citizenData.CurrentLocation.ToString();
             travelEvent.HomeBuilding = citizenData.m_homeBuilding;
             travelEvent.WorkBuilding = citizenData.m_workBuilding;
@@ -142,7 +142,7 @@ namespace ODMatrix.Aggregation
             else if (retryCount <= 10 || retryCount % 250 == 0)
             {
                 ModLogger.Info("Travel retry #" + retryCount + " (transfer #" + count + "): " + travelEvent);
-                ModLogger.Info("Retry diagnostic #" + retryCount + ": Key=" + travelEvent.DeduplicationKey + "; Purpose=" + travelEvent.Purpose + "; WindowSeconds=" + travelEvent.DeduplicationWindowSeconds + "; SecondsSincePreviousPrimary=" + travelEvent.SecondsSincePreviousPrimary.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "; PreviousPrimaryReason=" + travelEvent.PreviousPrimaryReason + "; PreviousPrimarySource=" + travelEvent.PreviousPrimarySourceTag + "; RetryFlags=" + travelEvent.RetryDiagnosticFlags + ".");
+                ModLogger.Info("Retry diagnostic #" + retryCount + ": Key=" + travelEvent.DeduplicationKey + "; Purpose=" + travelEvent.TransferReasonTag + "; WindowSeconds=" + travelEvent.DeduplicationWindowSeconds + "; SecondsSincePreviousPrimary=" + travelEvent.SecondsSincePreviousPrimary.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "; PreviousPrimaryReason=" + travelEvent.PreviousPrimaryReason + "; PreviousPrimarySource=" + travelEvent.PreviousPrimarySourceTag + "; RetryFlags=" + travelEvent.RetryDiagnosticFlags + ".");
             }
         }
     }
