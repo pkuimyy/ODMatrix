@@ -17,7 +17,6 @@ namespace ODMatrix.Aggregation
             lock (SyncRoot)
             {
                 RecentEvents.Clear();
-                TravelDeduplicator.Clear();
                 TravelMetricsCollector.Reset();
             }
 
@@ -30,7 +29,6 @@ namespace ODMatrix.Aggregation
             {
                 TravelMetricsCollector.LogSummaryReport();
                 RecentEvents.Clear();
-                TravelDeduplicator.Clear();
                 TravelMetricsCollector.Reset();
             }
         }
@@ -93,8 +91,7 @@ namespace ODMatrix.Aggregation
             travelEvent.TravelerType = travelerType;
             travelEvent.CitizenId = citizenId;
             travelEvent.SourceTag = sourceTag;
-            travelEvent.TransferReason = reason;
-            travelEvent.TransferReasonTag = reason.ToString();
+            travelEvent.Reason = reason;
             travelEvent.CitizenLocation = citizenData.CurrentLocation.ToString();
             travelEvent.HomeBuilding = citizenData.m_homeBuilding;
             travelEvent.WorkBuilding = citizenData.m_workBuilding;
@@ -104,9 +101,6 @@ namespace ODMatrix.Aggregation
 
             TravelLocationResolver.PopulateOrigin(citizenData, travelEvent);
             TravelLocationResolver.PopulateDestination(offer, travelEvent);
-
-            // 依赖注入去重状态
-            TravelDeduplicator.ApplyDeduplication(travelEvent);
 
             return travelEvent;
         }
@@ -126,23 +120,12 @@ namespace ODMatrix.Aggregation
 
                 RecentEvents.Add(travelEvent);
                 TravelMetricsCollector.CollectMetrics(travelEvent);
-
                 count = TravelMetricsCollector.TotalCaptured;
-                primaryCount = TravelMetricsCollector.TotalPrimaryIntents;
-                retryCount = TravelMetricsCollector.TotalRetries;
             }
 
-            if (travelEvent.IsPrimaryIntent)
+            if (count <= 10 || count % 100 == 0)
             {
-                if (count <= 10 || primaryCount % 100 == 0)
-                {
-                    ModLogger.Info("Primary travel intent #" + primaryCount + " (transfer #" + count + "): " + travelEvent);
-                }
-            }
-            else if (retryCount <= 10 || retryCount % 250 == 0)
-            {
-                ModLogger.Info("Travel retry #" + retryCount + " (transfer #" + count + "): " + travelEvent);
-                ModLogger.Info("Retry diagnostic #" + retryCount + ": Key=" + travelEvent.DeduplicationKey + "; Purpose=" + travelEvent.TransferReasonTag + "; WindowSeconds=" + travelEvent.DeduplicationWindowSeconds + "; SecondsSincePreviousPrimary=" + travelEvent.SecondsSincePreviousPrimary.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "; PreviousPrimaryReason=" + travelEvent.PreviousPrimaryReason + "; PreviousPrimarySource=" + travelEvent.PreviousPrimarySourceTag + "; RetryFlags=" + travelEvent.RetryDiagnosticFlags + ".");
+                ModLogger.Info("Captured travel intent #" + count + ": " + travelEvent);
             }
         }
     }

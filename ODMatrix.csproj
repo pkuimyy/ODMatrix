@@ -59,11 +59,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
-	<Compile Include="src\Aggregation\ResidentTravelCapture.cs" />
-	<Compile Include="src\Aggregation\TravelDeduplicator.cs" />
-	<Compile Include="src\Aggregation\TravelLocationResolver.cs" />
-	<Compile Include="src\Aggregation\TravelMetricsCollector.cs" />
-	<Compile Include="src\Bootstrap\ModLifecycle.cs" />
+    <Compile Include="src\Aggregation\ResidentTravelCapture.cs" />
+    <Compile Include="src\Aggregation\TravelLocationResolver.cs" />
+    <Compile Include="src\Aggregation\TravelMetricsCollector.cs" />
+    <Compile Include="src\Bootstrap\ModLifecycle.cs" />
     <Compile Include="src\Bootstrap\ODMatrixLoadingExtension.cs" />
     <Compile Include="src\Bootstrap\ODMatrixMod.cs" />
     <Compile Include="src\Diagnostics\ModLogger.cs" />
