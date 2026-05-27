@@ -2,7 +2,7 @@
 
 ODMatrix 是一个面向《都市：天际线 1》（Cities: Skylines 1）的数据采集端 Mod 项目。
 
-本仓库当前仅覆盖 **游戏内需求采集、聚合与 JSON 导出**，用于为后续外部可视化工具提供起讫点（OD, Origin-Destination）数据快照。项目现阶段已完成解决方案初始化、基础依赖接入与本地引用配置，业务功能尚未开始实现。
+本仓库当前聚焦 **游戏内需求采集、聚合与 JSON 导出**，用于为后续外部可视化工具提供起讫点（OD, Origin-Destination）数据快照。项目现阶段已完成 0.1.3 的意图层采集、去重分类、路径层对照埋点与独立日志验证，正式导出与聚合仍在后续阶段。
 
 ## 项目目标
 
@@ -18,16 +18,17 @@ ODMatrix 是一个面向《都市：天际线 1》（Cities: Skylines 1）的数
 - .NET Framework 3.5 类库项目初始化
 - Cities: Skylines 相关程序集引用接入
 - CitiesHarmony API / Harmony 依赖接入
-- 文档体系初始化
+- Mod 入口类与生命周期接入
+- ResidentAI / TouristAI / PathManager 关键补丁链路打通
+- 独立日志、反射探针与 0.1.3 诊断摘要输出
 - 0.1.3 版本的意图口径收敛与最终诊断增强
 
 当前仓库尚未完成：
 
-- Mod 入口类
-- Harmony 补丁实现
 - 事件缓冲与聚合器
 - JSON 序列化与导出
-- 游戏内设置、日志与调试面板
+- 稳定的游戏内设置与调试面板
+- 将游戏内时间正式纳入事件模型与导出契约
 
 ## 技术约束
 
@@ -111,6 +112,25 @@ ODMatrix 是一个面向《都市：天际线 1》（Cities: Skylines 1）的数
 
 推荐将业务代码逐步放入 `src/` 目录，并按职责拆分为入口、补丁、模型、聚合、导出、日志等子目录。
 
+### 7. 数据中体现游戏内时间
+
+后续事件模型与导出结果中需要体现游戏内时间，而不只保留现实世界采集时间。
+
+基于对 `Assembly-CSharp.dll` 的反射检查，当前已确认存在以下可用候选：
+
+- `SimulationManager.m_currentGameTime : System.DateTime`
+- `SimulationManager.m_currentDayTimeHour : System.Single`
+- `SimulationManager.m_dayTimeFrame : System.UInt32`
+- `SimulationManager.FrameToTime(uint frame) : System.DateTime`
+- `SimulationManager.TimeToFrame(DateTime time) : uint`
+- `DayNightProperties.normalizedTimeOfDay : System.Single`
+
+当前决策是：
+
+- 后续原始事件对象至少保留一个“游戏内绝对时间”字段
+- 可额外保留“游戏内时刻/小时”或“归一化日内进度”作为便于分析的辅助字段
+- 文档与导出契约从现在开始把“游戏内时间”视为正式设计目标
+
 ## 目录结构
 
 ```text
@@ -154,7 +174,20 @@ ODMatrix/
 - `ICities.dll`
 - `UnityEngine.dll`
 
-如果你的游戏安装目录与项目文件中配置不一致，需要手动更新 `HintPath`。
+为避免多人协作时反复修改项目文件，仓库现在只支持一种本地配置方式：在仓库根目录新建未入库的 `ODMatrix.csproj.user`。
+
+`ODMatrix.csproj.user` 示例：
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup>
+    <CitiesSkylinesManagedDir>D:\SteamLibrary\steamapps\common\Cities_Skylines\Cities_Data\Managed</CitiesSkylinesManagedDir>
+  </PropertyGroup>
+</Project>
+```
+
+这样每个人只维护自己的本地路径，不需要再提交 `HintPath` 变更。
 
 ### 3. 还原 NuGet 依赖
 
@@ -209,12 +242,13 @@ ODMatrix/
 - [x] 项目初始化
 - [x] 基础依赖接入
 - [x] 文档补齐
-- [ ] 运行时入口类
+- [x] 运行时入口类
 
 ### M1：采集链路打通
 
-- [ ] Harmony 补丁打通
-- [ ] 采集事件入队
+- [x] Harmony 补丁打通
+- [x] 意图层采集与去重分类
+- [x] 路径层对照埋点
 - [ ] 聚合器最小实现
 - [ ] 手动导出 JSON
 
@@ -222,7 +256,7 @@ ODMatrix/
 
 - [ ] 自动快照
 - [ ] 配置项
-- [ ] 诊断日志
+- [x] 诊断日志
 - [ ] 异常保护与性能审计
 
 ## 当前分析重点（0.1.3）
@@ -245,6 +279,17 @@ ODMatrix/
   - 窗口内多次重试
 
 0.1.3 的主口径结论为：后续 OD 聚合优先使用 `PrimaryIntent`，`Retry` 仅保留为诊断与阈值复核输入。
+
+基于 `odmatrix_20260527_101429.log` 的本次实测，还可确认：
+
+- 会话记录总数为 `8440`
+- `PrimaryIntent=8430`，`Retry=10`，重试总体占比约 `0.12%`
+- 居民事件 `7899`，游客事件 `541`
+- `PathManager.CreatePath` 对照请求为 `26603`，约为主意图数的 `3.16` 倍
+- 重试主要集中于 `Work=8` 与 `Social=2`，`Shopping/Leisure/School/Other` 未观察到重试
+- `VeryShortRetryInterval=1`、`MultipleRetriesInWindow=1`，`sameOriginAndDestination=0`
+
+这说明当前 0.1.3 版本已经足以支持“以主意图为主、以重试为辅、以路径层为对照”的后续 OD 聚合口径。
 
 ## 许可与说明
 
