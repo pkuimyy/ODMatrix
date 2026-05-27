@@ -75,7 +75,7 @@ namespace ODMatrix.Aggregation
         {
             try
             {
-                ResidentTravelEvent travelEvent = BuildTravelEvent(travelerType, citizenId, citizenData, reason, offer, sourceTag);
+                ResidentTravelEvent travelEvent = BuildTravelEvent(travelerType, citizenId, citizenData, reason, offer);
                 Store(travelEvent);
             }
             catch (Exception ex)
@@ -84,13 +84,12 @@ namespace ODMatrix.Aggregation
             }
         }
 
-        private static ResidentTravelEvent BuildTravelEvent(TravelerType travelerType, uint citizenId, Citizen citizenData, TransferManager.TransferReason reason, TransferManager.TransferOffer offer, string sourceTag)
+        private static ResidentTravelEvent BuildTravelEvent(TravelerType travelerType, uint citizenId, Citizen citizenData, TransferManager.TransferReason reason, TransferManager.TransferOffer offer)
         {
             ResidentTravelEvent travelEvent = new ResidentTravelEvent();
             travelEvent.CapturedAtUtc = DateTime.UtcNow;
             travelEvent.TravelerType = travelerType;
             travelEvent.CitizenId = citizenId;
-            travelEvent.SourceTag = sourceTag;
             travelEvent.Reason = reason;
             travelEvent.CitizenLocation = citizenData.CurrentLocation.ToString();
             travelEvent.HomeBuilding = citizenData.m_homeBuilding;
@@ -108,9 +107,7 @@ namespace ODMatrix.Aggregation
         private static void Store(ResidentTravelEvent travelEvent)
         {
             int count;
-            int primaryCount;
-            int retryCount;
-
+            
             lock (SyncRoot)
             {
                 if (RecentEvents.Count >= MaxRetainedEvents)
@@ -119,7 +116,7 @@ namespace ODMatrix.Aggregation
                 }
 
                 RecentEvents.Add(travelEvent);
-                TravelMetricsCollector.CollectMetrics(travelEvent);
+                TravelMetricsCollector.IncrementCaptured();
                 count = TravelMetricsCollector.TotalCaptured;
             }
 
