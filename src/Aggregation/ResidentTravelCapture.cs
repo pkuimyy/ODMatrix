@@ -43,6 +43,12 @@ namespace ODMatrix.Aggregation
                 TravelLocationResolver.PopulateOrigin(citizenData, ref record);
                 TravelLocationResolver.PopulateDestination(offer, ref record);
 
+                if (TravelMetricsCollector.TotalCaptured % 100 == 0)
+                {
+                    ModLogger.Info("Heartbeat: Captured " + TravelMetricsCollector.TotalCaptured +
+                                   " records. Dropped: " + TravelRecordBuffer.DroppedRecords);
+                }
+
                 TravelMetricsCollector.IncrementCaptured();
 
                 TravelRecordBuffer.Enqueue(ref record);
