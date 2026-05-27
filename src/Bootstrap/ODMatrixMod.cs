@@ -11,7 +11,7 @@ namespace ODMatrix.Bootstrap
 
         public string Description
         {
-            get { return "居民出行数据采集与反射探测 Mod v" + ModVersion.SemanticVersion; }
+            get { return "ODMatrix v" + ModVersion.SemanticVersion; }
         }
     }
 }

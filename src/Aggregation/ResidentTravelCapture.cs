@@ -1,63 +1,24 @@
-using System;
-using System.Collections.Generic;
-using ColossalFramework;
 using ODMatrix.Diagnostics;
 using ODMatrix.Models;
-using UnityEngine;
+using System;
+using System.Collections.Generic;
 
 namespace ODMatrix.Aggregation
 {
     internal static class ResidentTravelCapture
     {
         private const int MaxRetainedEvents = 2048;
-        private const int DeduplicationRetentionSeconds = 180;
-        private const int WorkDeduplicationWindowSeconds = 90;
-        private const int SchoolDeduplicationWindowSeconds = 90;
-        private const int ShoppingDeduplicationWindowSeconds = 45;
-        private const int LeisureDeduplicationWindowSeconds = 45;
-        private const int SocialDeduplicationWindowSeconds = 60;
-        private const int OtherDeduplicationWindowSeconds = 30;
-        private const double VeryShortRetryIntervalSeconds = 3d;
 
         private static readonly object SyncRoot = new object();
         private static readonly List<ResidentTravelEvent> RecentEvents = new List<ResidentTravelEvent>(256);
-        private static readonly Dictionary<string, DeduplicationState> DeduplicationStates = new Dictionary<string, DeduplicationState>(1024);
-        private static readonly int[] PurposeTotals = new int[Enum.GetValues(typeof(NormalizedPurpose)).Length];
-        private static readonly int[] PurposePrimaryTotals = new int[Enum.GetValues(typeof(NormalizedPurpose)).Length];
-        private static readonly int[] PurposeRetryTotals = new int[Enum.GetValues(typeof(NormalizedPurpose)).Length];
-        private static readonly int[] TravelerTotals = new int[Enum.GetValues(typeof(TravelerType)).Length];
-        private static readonly int[] SignalTotals = new int[Enum.GetValues(typeof(TravelSignalType)).Length];
-
-        private static int s_totalCaptured;
-        private static int s_totalPrimaryIntents;
-        private static int s_totalRetries;
-        private static int s_totalResidentTransfers;
-        private static int s_totalTouristTransfers;
-        private static int s_totalComparePathRequests;
-        private static int s_sameOriginAndDestinationRetries;
-        private static int s_veryShortIntervalRetries;
-        private static int s_multipleRetriesInWindow;
 
         internal static void Initialize()
         {
             lock (SyncRoot)
             {
                 RecentEvents.Clear();
-                DeduplicationStates.Clear();
-                s_totalCaptured = 0;
-                s_totalPrimaryIntents = 0;
-                s_totalRetries = 0;
-                s_totalResidentTransfers = 0;
-                s_totalTouristTransfers = 0;
-                s_totalComparePathRequests = 0;
-                s_sameOriginAndDestinationRetries = 0;
-                s_veryShortIntervalRetries = 0;
-                s_multipleRetriesInWindow = 0;
-                ResetCounters(PurposeTotals);
-                ResetCounters(PurposePrimaryTotals);
-                ResetCounters(PurposeRetryTotals);
-                ResetCounters(TravelerTotals);
-                ResetCounters(SignalTotals);
+                TravelDeduplicator.Clear();
+                TravelMetricsCollector.Reset();
             }
 
             ModLogger.Info("ResidentTravelCapture initialized. Counting period starts when the mod becomes active in the current session.");
@@ -65,76 +26,13 @@ namespace ODMatrix.Aggregation
 
         internal static void Shutdown()
         {
-            int totalCaptured;
-            int totalPrimaryIntents;
-            int totalRetries;
-            int totalResidentTransfers;
-            int totalTouristTransfers;
-            int totalComparePathRequests;
-            int sameOriginAndDestinationRetries;
-            int veryShortIntervalRetries;
-            int multipleRetriesInWindow;
-            string purposeSummary;
-            string purposePrimarySummary;
-            string purposeRetrySummary;
-            string purposeRetryRateSummary;
-            string travelerSummary;
-            string signalSummary;
-
             lock (SyncRoot)
             {
-                totalCaptured = s_totalCaptured;
-                totalPrimaryIntents = s_totalPrimaryIntents;
-                totalRetries = s_totalRetries;
-                totalResidentTransfers = s_totalResidentTransfers;
-                totalTouristTransfers = s_totalTouristTransfers;
-                totalComparePathRequests = s_totalComparePathRequests;
-                sameOriginAndDestinationRetries = s_sameOriginAndDestinationRetries;
-                veryShortIntervalRetries = s_veryShortIntervalRetries;
-                multipleRetriesInWindow = s_multipleRetriesInWindow;
-                purposeSummary = FormatCounterSummary(PurposeTotals, typeof(NormalizedPurpose));
-                purposePrimarySummary = FormatCounterSummary(PurposePrimaryTotals, typeof(NormalizedPurpose));
-                purposeRetrySummary = FormatCounterSummary(PurposeRetryTotals, typeof(NormalizedPurpose));
-                purposeRetryRateSummary = FormatRetryRateSummary();
-                travelerSummary = FormatCounterSummary(TravelerTotals, typeof(TravelerType));
-                signalSummary = FormatCounterSummary(SignalTotals, typeof(TravelSignalType));
-
+                TravelMetricsCollector.LogSummaryReport();
                 RecentEvents.Clear();
-                DeduplicationStates.Clear();
-                s_totalCaptured = 0;
-                s_totalPrimaryIntents = 0;
-                s_totalRetries = 0;
-                s_totalResidentTransfers = 0;
-                s_totalTouristTransfers = 0;
-                s_totalComparePathRequests = 0;
-                s_sameOriginAndDestinationRetries = 0;
-                s_veryShortIntervalRetries = 0;
-                s_multipleRetriesInWindow = 0;
-                ResetCounters(PurposeTotals);
-                ResetCounters(PurposePrimaryTotals);
-                ResetCounters(PurposeRetryTotals);
-                ResetCounters(TravelerTotals);
-                ResetCounters(SignalTotals);
+                TravelDeduplicator.Clear();
+                TravelMetricsCollector.Reset();
             }
-
-            ModLogger.Info(
-                "ResidentTravelCapture stopped. Total transfers=" + totalCaptured +
-                "; primaryIntents=" + totalPrimaryIntents +
-                "; retries=" + totalRetries +
-                "; residentTransfers=" + totalResidentTransfers +
-                "; touristTransfers=" + totalTouristTransfers +
-                "; comparePathRequests=" + totalComparePathRequests + ".");
-            ModLogger.Info("Intent summary by purpose: " + purposeSummary + ".");
-            ModLogger.Info("Intent summary by purpose primary: " + purposePrimarySummary + ".");
-            ModLogger.Info("Intent summary by purpose retry: " + purposeRetrySummary + ".");
-            ModLogger.Info("Intent summary by purpose retry rate: " + purposeRetryRateSummary + ".");
-            ModLogger.Info("Intent summary by traveler: " + travelerSummary + ".");
-            ModLogger.Info("Intent summary by signal: " + signalSummary + ".");
-            ModLogger.Info(
-                "Retry diagnostic summary: sameOriginAndDestination=" + sameOriginAndDestinationRetries +
-                "; veryShortInterval=" + veryShortIntervalRetries +
-                "; multipleRetriesInWindow=" + multipleRetriesInWindow + ".");
-            ModLogger.Info("Intent baseline for downstream OD: use PrimaryIntent as the main input; keep Retry only for diagnostics and threshold review.");
         }
 
         internal static ResidentTravelEvent[] GetRecentEventsSnapshot()
@@ -160,8 +58,8 @@ namespace ODMatrix.Aggregation
             int totalPathRequests;
             lock (SyncRoot)
             {
-                s_totalComparePathRequests++;
-                totalPathRequests = s_totalComparePathRequests;
+                TravelMetricsCollector.IncrementPathRequests();
+                totalPathRequests = TravelMetricsCollector.TotalComparePathRequests;
             }
 
             if (totalPathRequests <= 10 || totalPathRequests % 500 == 0)
@@ -196,7 +94,7 @@ namespace ODMatrix.Aggregation
             travelEvent.CitizenId = citizenId;
             travelEvent.SourceTag = sourceTag;
             travelEvent.TransferReason = reason.ToString();
-            travelEvent.Purpose = NormalizePurpose(reason);
+            travelEvent.Purpose = TravelLocationResolver.NormalizePurpose(reason);
             travelEvent.CitizenLocation = citizenData.CurrentLocation.ToString();
             travelEvent.HomeBuilding = citizenData.m_homeBuilding;
             travelEvent.WorkBuilding = citizenData.m_workBuilding;
@@ -204,323 +102,13 @@ namespace ODMatrix.Aggregation
             travelEvent.OfferObjectType = offer.m_object.Type;
             travelEvent.OfferObjectRaw = offer.m_object.RawData;
 
-            PopulateOrigin(citizenData, travelEvent);
-            PopulateDestination(offer, travelEvent);
-            ApplyDeduplication(travelEvent);
+            TravelLocationResolver.PopulateOrigin(citizenData, travelEvent);
+            TravelLocationResolver.PopulateDestination(offer, travelEvent);
+
+            // 依赖注入去重状态
+            TravelDeduplicator.ApplyDeduplication(travelEvent);
 
             return travelEvent;
-        }
-
-        private static void ApplyDeduplication(ResidentTravelEvent travelEvent)
-        {
-            DateTime now = travelEvent.CapturedAtUtc;
-            string deduplicationKey = BuildDeduplicationKey(travelEvent);
-            int deduplicationWindowSeconds = GetDeduplicationWindowSeconds(travelEvent.Purpose);
-
-            travelEvent.DeduplicationKey = deduplicationKey;
-            travelEvent.DeduplicationWindowSeconds = deduplicationWindowSeconds;
-
-            lock (SyncRoot)
-            {
-                CleanupDeduplicationStates(now);
-
-                DeduplicationState state;
-                if (!DeduplicationStates.TryGetValue(deduplicationKey, out state))
-                {
-                    state = new DeduplicationState();
-                    state.LastSeenUtc = now;
-                    state.HitCount = 1;
-                    state.PrimaryCount = 1;
-                    state.LastPrimarySeenUtc = now;
-                    state.LastPrimaryReason = travelEvent.TransferReason;
-                    state.LastPrimarySourceTag = travelEvent.SourceTag;
-                    DeduplicationStates[deduplicationKey] = state;
-
-                    travelEvent.SignalType = TravelSignalType.PrimaryIntent;
-                    travelEvent.IsPrimaryIntent = true;
-                    travelEvent.DuplicateCountInWindow = 0;
-                    travelEvent.SecondsSincePreviousPrimary = 0d;
-                    travelEvent.PreviousPrimaryReason = string.Empty;
-                    travelEvent.PreviousPrimarySourceTag = string.Empty;
-                     travelEvent.RetryDiagnosticFlags = RetryDiagnosticFlags.None;
-                    return;
-                }
-
-                TimeSpan elapsed = now - state.LastSeenUtc;
-                state.LastSeenUtc = now;
-                state.HitCount++;
-
-                if (elapsed.TotalSeconds <= deduplicationWindowSeconds)
-                {
-                    travelEvent.SignalType = TravelSignalType.Retry;
-                    travelEvent.IsPrimaryIntent = false;
-                    travelEvent.DuplicateCountInWindow = state.HitCount - state.PrimaryCount;
-                    travelEvent.SecondsSincePreviousPrimary = (now - state.LastPrimarySeenUtc).TotalSeconds;
-                    travelEvent.PreviousPrimaryReason = state.LastPrimaryReason;
-                    travelEvent.PreviousPrimarySourceTag = state.LastPrimarySourceTag;
-                     travelEvent.RetryDiagnosticFlags = BuildRetryDiagnosticFlags(travelEvent);
-                    return;
-                }
-
-                state.PrimaryCount = state.HitCount;
-                state.LastPrimarySeenUtc = now;
-                state.LastPrimaryReason = travelEvent.TransferReason;
-                state.LastPrimarySourceTag = travelEvent.SourceTag;
-                travelEvent.SignalType = TravelSignalType.PrimaryIntent;
-                travelEvent.IsPrimaryIntent = true;
-                travelEvent.DuplicateCountInWindow = 0;
-                travelEvent.SecondsSincePreviousPrimary = 0d;
-                travelEvent.PreviousPrimaryReason = string.Empty;
-                travelEvent.PreviousPrimarySourceTag = string.Empty;
-                 travelEvent.RetryDiagnosticFlags = RetryDiagnosticFlags.None;
-            }
-        }
-
-        private static RetryDiagnosticFlags BuildRetryDiagnosticFlags(ResidentTravelEvent travelEvent)
-        {
-            RetryDiagnosticFlags flags = RetryDiagnosticFlags.None;
-
-            if (travelEvent.OriginBuilding != 0 &&
-                travelEvent.DestinationBuilding != 0 &&
-                travelEvent.OriginBuilding == travelEvent.DestinationBuilding)
-            {
-                flags |= RetryDiagnosticFlags.SameOriginAndDestinationBuilding;
-            }
-
-            if (travelEvent.SecondsSincePreviousPrimary <= VeryShortRetryIntervalSeconds)
-            {
-                flags |= RetryDiagnosticFlags.VeryShortRetryInterval;
-            }
-
-            if (travelEvent.DuplicateCountInWindow >= 2)
-            {
-                flags |= RetryDiagnosticFlags.MultipleRetriesInWindow;
-            }
-
-            return flags;
-        }
-
-        private static string BuildDeduplicationKey(ResidentTravelEvent travelEvent)
-        {
-            return string.Format(
-                System.Globalization.CultureInfo.InvariantCulture,
-                "{0}|{1}|{2}|{3}|{4}|{5}",
-                travelEvent.TravelerType,
-                travelEvent.CitizenId,
-                travelEvent.Purpose,
-                travelEvent.OfferObjectType,
-                GetDestinationIdentity(travelEvent),
-                GetOriginIdentity(travelEvent));
-        }
-
-        private static int GetDeduplicationWindowSeconds(NormalizedPurpose purpose)
-        {
-            switch (purpose)
-            {
-                case NormalizedPurpose.Work:
-                    return WorkDeduplicationWindowSeconds;
-                case NormalizedPurpose.School:
-                    return SchoolDeduplicationWindowSeconds;
-                case NormalizedPurpose.Shopping:
-                    return ShoppingDeduplicationWindowSeconds;
-                case NormalizedPurpose.Leisure:
-                    return LeisureDeduplicationWindowSeconds;
-                case NormalizedPurpose.Social:
-                    return SocialDeduplicationWindowSeconds;
-                default:
-                    return OtherDeduplicationWindowSeconds;
-            }
-        }
-
-        private static NormalizedPurpose NormalizePurpose(TransferManager.TransferReason reason)
-        {
-            string reasonName = reason.ToString();
-
-            if (reasonName.StartsWith("Worker", StringComparison.Ordinal))
-            {
-                return NormalizedPurpose.Work;
-            }
-
-            if (reasonName.StartsWith("Student", StringComparison.Ordinal))
-            {
-                return NormalizedPurpose.School;
-            }
-
-            if (reasonName.StartsWith("Shopping", StringComparison.Ordinal))
-            {
-                return NormalizedPurpose.Shopping;
-            }
-
-            if (reasonName.StartsWith("Entertainment", StringComparison.Ordinal))
-            {
-                return NormalizedPurpose.Leisure;
-            }
-
-            if (reasonName.StartsWith("Single", StringComparison.Ordinal) ||
-                reasonName.StartsWith("Partner", StringComparison.Ordinal) ||
-                reasonName.StartsWith("Family", StringComparison.Ordinal))
-            {
-                return NormalizedPurpose.Social;
-            }
-
-            return NormalizedPurpose.Other;
-        }
-
-        private static string GetDestinationIdentity(ResidentTravelEvent travelEvent)
-        {
-            if (travelEvent.DestinationBuilding != 0)
-            {
-                return "B:" + travelEvent.DestinationBuilding;
-            }
-
-            return travelEvent.OfferObjectType + ":" + travelEvent.OfferObjectRaw;
-        }
-
-        private static string GetOriginIdentity(ResidentTravelEvent travelEvent)
-        {
-            if (travelEvent.OriginBuilding != 0)
-            {
-                return "B:" + travelEvent.OriginBuilding;
-            }
-
-            return travelEvent.OriginResolvedFrom;
-        }
-
-        private static void CleanupDeduplicationStates(DateTime now)
-        {
-            if (DeduplicationStates.Count == 0)
-            {
-                return;
-            }
-
-            List<string> expiredKeys = null;
-            foreach (KeyValuePair<string, DeduplicationState> pair in DeduplicationStates)
-            {
-                if ((now - pair.Value.LastSeenUtc).TotalSeconds <= DeduplicationRetentionSeconds)
-                {
-                    continue;
-                }
-
-                if (expiredKeys == null)
-                {
-                    expiredKeys = new List<string>();
-                }
-
-                expiredKeys.Add(pair.Key);
-            }
-
-            if (expiredKeys == null)
-            {
-                return;
-            }
-
-            for (int i = 0; i < expiredKeys.Count; i++)
-            {
-                DeduplicationStates.Remove(expiredKeys[i]);
-            }
-        }
-
-        private static void PopulateOrigin(Citizen citizenData, ResidentTravelEvent travelEvent)
-        {
-            if (citizenData.m_instance != 0)
-            {
-                travelEvent.OriginPosition = GetCitizenInstancePosition(citizenData.m_instance);
-                travelEvent.OriginResolvedFrom = "CitizenInstance";
-                return;
-            }
-
-            if (TryAssignBuildingOrigin(citizenData.m_visitBuilding, "VisitBuilding", travelEvent))
-            {
-                return;
-            }
-
-            if (TryAssignBuildingOrigin(citizenData.m_homeBuilding, "HomeBuilding", travelEvent))
-            {
-                return;
-            }
-
-            if (TryAssignBuildingOrigin(citizenData.m_workBuilding, "WorkBuilding", travelEvent))
-            {
-                return;
-            }
-
-            travelEvent.OriginResolvedFrom = "Unavailable";
-        }
-
-        private static bool TryAssignBuildingOrigin(ushort buildingId, string resolvedFrom, ResidentTravelEvent travelEvent)
-        {
-            if (buildingId == 0)
-            {
-                return false;
-            }
-
-            Vector3 position;
-            if (!TryGetBuildingPosition(buildingId, out position))
-            {
-                return false;
-            }
-
-            travelEvent.OriginBuilding = buildingId;
-            travelEvent.OriginPosition = position;
-            travelEvent.OriginResolvedFrom = resolvedFrom;
-            return true;
-        }
-
-        private static void PopulateDestination(TransferManager.TransferOffer offer, ResidentTravelEvent travelEvent)
-        {
-            ushort buildingId = offer.m_object.Building;
-            if (buildingId != 0)
-            {
-                Vector3 position;
-                if (TryGetBuildingPosition(buildingId, out position))
-                {
-                    travelEvent.DestinationBuilding = buildingId;
-                    travelEvent.DestinationPosition = position;
-                    travelEvent.DestinationResolvedFrom = "Offer.Building";
-                    return;
-                }
-            }
-
-            ushort citizenInstanceId = offer.m_object.CitizenInstance;
-            if (citizenInstanceId != 0)
-            {
-                travelEvent.DestinationPosition = GetCitizenInstancePosition(citizenInstanceId);
-                travelEvent.DestinationResolvedFrom = "Offer.CitizenInstance";
-                return;
-            }
-
-            uint offerCitizenId = offer.m_object.Citizen;
-            if (offerCitizenId != 0)
-            {
-                Citizen offerCitizen = Singleton<CitizenManager>.instance.m_citizens.m_buffer[(int)offerCitizenId];
-                if (TryAssignOfferCitizenDestination(offerCitizen, travelEvent))
-                {
-                    return;
-                }
-            }
-
-            travelEvent.DestinationResolvedFrom = "OfferObjectUnavailable";
-        }
-
-        private static bool TryAssignOfferCitizenDestination(Citizen citizenData, ResidentTravelEvent travelEvent)
-        {
-            if (citizenData.m_instance != 0)
-            {
-                travelEvent.DestinationPosition = GetCitizenInstancePosition(citizenData.m_instance);
-                travelEvent.DestinationResolvedFrom = "Offer.Citizen";
-                return true;
-            }
-
-            Vector3 position;
-            if (citizenData.m_visitBuilding != 0 && TryGetBuildingPosition(citizenData.m_visitBuilding, out position))
-            {
-                travelEvent.DestinationBuilding = citizenData.m_visitBuilding;
-                travelEvent.DestinationPosition = position;
-                travelEvent.DestinationResolvedFrom = "Offer.Citizen.VisitBuilding";
-                return true;
-            }
-
-            return false;
         }
 
         private static void Store(ResidentTravelEvent travelEvent)
@@ -528,6 +116,7 @@ namespace ODMatrix.Aggregation
             int count;
             int primaryCount;
             int retryCount;
+
             lock (SyncRoot)
             {
                 if (RecentEvents.Count >= MaxRetainedEvents)
@@ -536,54 +125,11 @@ namespace ODMatrix.Aggregation
                 }
 
                 RecentEvents.Add(travelEvent);
-                s_totalCaptured++;
-                if (travelEvent.TravelerType == TravelerType.Resident)
-                {
-                    s_totalResidentTransfers++;
-                }
-                else
-                {
-                    s_totalTouristTransfers++;
-                }
+                TravelMetricsCollector.CollectMetrics(travelEvent);
 
-                if (travelEvent.IsPrimaryIntent)
-                {
-                    s_totalPrimaryIntents++;
-                }
-                else
-                {
-                    s_totalRetries++;
-                    if ((travelEvent.RetryDiagnosticFlags & RetryDiagnosticFlags.SameOriginAndDestinationBuilding) != 0)
-                    {
-                        s_sameOriginAndDestinationRetries++;
-                    }
-
-                    if ((travelEvent.RetryDiagnosticFlags & RetryDiagnosticFlags.VeryShortRetryInterval) != 0)
-                    {
-                        s_veryShortIntervalRetries++;
-                    }
-
-                    if ((travelEvent.RetryDiagnosticFlags & RetryDiagnosticFlags.MultipleRetriesInWindow) != 0)
-                    {
-                        s_multipleRetriesInWindow++;
-                    }
-                }
-
-                PurposeTotals[(int)travelEvent.Purpose]++;
-                TravelerTotals[(int)travelEvent.TravelerType]++;
-                SignalTotals[(int)travelEvent.SignalType]++;
-                if (travelEvent.IsPrimaryIntent)
-                {
-                    PurposePrimaryTotals[(int)travelEvent.Purpose]++;
-                }
-                else
-                {
-                    PurposeRetryTotals[(int)travelEvent.Purpose]++;
-                }
-
-                count = s_totalCaptured;
-                primaryCount = s_totalPrimaryIntents;
-                retryCount = s_totalRetries;
+                count = TravelMetricsCollector.TotalCaptured;
+                primaryCount = TravelMetricsCollector.TotalPrimaryIntents;
+                retryCount = TravelMetricsCollector.TotalRetries;
             }
 
             if (travelEvent.IsPrimaryIntent)
@@ -598,86 +144,6 @@ namespace ODMatrix.Aggregation
                 ModLogger.Info("Travel retry #" + retryCount + " (transfer #" + count + "): " + travelEvent);
                 ModLogger.Info("Retry diagnostic #" + retryCount + ": Key=" + travelEvent.DeduplicationKey + "; Purpose=" + travelEvent.Purpose + "; WindowSeconds=" + travelEvent.DeduplicationWindowSeconds + "; SecondsSincePreviousPrimary=" + travelEvent.SecondsSincePreviousPrimary.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "; PreviousPrimaryReason=" + travelEvent.PreviousPrimaryReason + "; PreviousPrimarySource=" + travelEvent.PreviousPrimarySourceTag + "; RetryFlags=" + travelEvent.RetryDiagnosticFlags + ".");
             }
-        }
-
-        private static bool TryGetBuildingPosition(ushort buildingId, out Vector3 position)
-        {
-            if (buildingId == 0)
-            {
-                position = Vector3.zero;
-                return false;
-            }
-
-            position = Singleton<BuildingManager>.instance.m_buildings.m_buffer[(int)buildingId].m_position;
-            return true;
-        }
-
-        private static Vector3 GetCitizenInstancePosition(ushort citizenInstanceId)
-        {
-            if (citizenInstanceId == 0)
-            {
-                return Vector3.zero;
-            }
-
-            return Singleton<CitizenManager>.instance.m_instances.m_buffer[(int)citizenInstanceId].GetLastFramePosition();
-        }
-
-        private static void ResetCounters(int[] counters)
-        {
-            for (int i = 0; i < counters.Length; i++)
-            {
-                counters[i] = 0;
-            }
-        }
-
-        private static string FormatCounterSummary(int[] counters, Type enumType)
-        {
-            string[] names = Enum.GetNames(enumType);
-            System.Array values = Enum.GetValues(enumType);
-            List<string> parts = new List<string>(names.Length);
-
-            for (int i = 0; i < values.Length; i++)
-            {
-                int index = (int)values.GetValue(i);
-                parts.Add(names[i] + "=" + counters[index]);
-            }
-
-            return string.Join(", ", parts.ToArray());
-        }
-
-        private static string FormatRetryRateSummary()
-        {
-            System.Array values = Enum.GetValues(typeof(NormalizedPurpose));
-            List<string> parts = new List<string>(values.Length);
-
-            for (int i = 0; i < values.Length; i++)
-            {
-                int index = (int)values.GetValue(i);
-                int total = PurposeTotals[index];
-                int retries = PurposeRetryTotals[index];
-                double rate = total == 0 ? 0d : (double)retries / total;
-                parts.Add(
-                    values.GetValue(i) + "=" +
-                    rate.ToString("P1", System.Globalization.CultureInfo.InvariantCulture) +
-                    " (" + retries + "/" + total + ")");
-            }
-
-            return string.Join(", ", parts.ToArray());
-        }
-
-        private sealed class DeduplicationState
-        {
-            public DateTime LastSeenUtc;
-
-            public DateTime LastPrimarySeenUtc;
-
-            public int HitCount;
-
-            public int PrimaryCount;
-
-            public string LastPrimaryReason;
-
-            public string LastPrimarySourceTag;
         }
     }
 }

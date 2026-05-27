@@ -6,12 +6,13 @@ using ICities;
 using ODMatrix.Aggregation;
 using ODMatrix.Diagnostics;
 using UnityEngine;
+using ReflectionProbe = ODMatrix.Diagnostics.ReflectionProbe;
 
 namespace ODMatrix.Bootstrap
 {
     internal static class ModLifecycle
     {
-        private const string HarmonyId = "com.yy_1070.odmatrix";
+        private const string HarmonyId = "uk.thalweg.odmatrix";
 
         private static Harmony s_harmony;
         private static bool s_isActive;
@@ -29,7 +30,7 @@ namespace ODMatrix.Bootstrap
                 ModLogger.Lifecycle("ODMatrix v" + ModVersion.SemanticVersion + " loading for mode " + mode + ".");
 
                 ResidentTravelCapture.Initialize();
-                ODMatrix.Diagnostics.ReflectionProbe.Run();
+                ReflectionProbe.Run();
 
                 HarmonyHelper.DoOnHarmonyReady(ApplyPatches);
                 HarmonyHelper.EnsureHarmonyInstalled();
