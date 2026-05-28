@@ -10,6 +10,7 @@ namespace ODMatrix.Aggregation
     internal static class TravelRecordBuffer
     {
         private const int BufferSize = 10000;
+        private const int MaxLinesPerFile = 100000;
 
         private static TravelRecord[] _bufferA;
         private static TravelRecord[] _bufferB;
@@ -27,6 +28,12 @@ namespace ODMatrix.Aggregation
         private static volatile bool _isFlushing;
 
         private static string _csvFilePath;
+
+        private static string _sessionStartTimeStr;
+        private static float _lastGameTimeOfDay;   // 记录上一条记录的视觉时间
+        private static int _visualDayCount;        // 记录游戏内的视觉天数
+        private static int _currentLineCount;      // 用于追踪当前文件的行数
+        private static int _fileSplitIndex;        // 文件分片后缀序号
         internal static int DroppedRecords { get; private set; }
 
         internal static void Initialize()
@@ -38,12 +45,17 @@ namespace ODMatrix.Aggregation
             _currentIndex = 0;
             DroppedRecords = 0;
 
+            _sessionStartTimeStr = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            _lastGameTimeOfDay = -1f;
+            _visualDayCount = 1;
+            _currentLineCount = 0;
+            _fileSplitIndex = 0;
+
+            _csvFilePath = null;
+
             _flushEvent = new AutoResetEvent(false);
             _isRunning = true;
             _isFlushing = false;
-
-            _csvFilePath = Path.Combine(ModLogger.LogDirectoryPath, "odmatrix_records_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv");
-            File.WriteAllText(_csvFilePath, "RecordTime,CitizenId,Reason,TravelerType,OriginX,OriginZ,DestX,DestZ\n");
 
             _ioThread = new Thread(IoWorkerLoop)
             {
@@ -52,7 +64,7 @@ namespace ODMatrix.Aggregation
             };
             _ioThread.Start();
 
-            ModLogger.Info("TravelRecordBuffer initialized with Double Buffering. Buffer size: " + BufferSize);
+            ModLogger.Info("TravelRecordBuffer initialized. Split rules: Visual Day bounds and " + MaxLinesPerFile + " lines/file.");
         }
 
         internal static void Enqueue(ref TravelRecord record)
@@ -76,11 +88,11 @@ namespace ODMatrix.Aggregation
                     _currentBuffer = _flushBuffer;
                     _flushBuffer = temp;
 
-                    _flushCount = _currentIndex; 
-                    _currentIndex = 0;           
-                    _isFlushing = true;          
+                    _flushCount = _currentIndex;
+                    _currentIndex = 0;
+                    _isFlushing = true;
 
-                    
+
                     _currentBuffer[_currentIndex] = record;
                     _currentIndex++;
 
@@ -144,13 +156,56 @@ namespace ODMatrix.Aggregation
 
         private static void WriteBufferToDisk()
         {
-            StringBuilder sb = new StringBuilder(_flushCount * 64);
+            StringBuilder sb = new StringBuilder(_flushCount * 128);
 
             for (int i = 0; i < _flushCount; i++)
             {
                 TravelRecord record = _flushBuffer[i];
 
+                bool isNewVisualDay = false;
+                if (_lastGameTimeOfDay >= 0f && record.GameTimeOfDay < (_lastGameTimeOfDay - 0.1f))
+                {
+                    isNewVisualDay = true;
+                }
+                _lastGameTimeOfDay = record.GameTimeOfDay;
+
+                bool isLineLimitReached = _currentLineCount >= MaxLinesPerFile;
+
+                if (_csvFilePath == null || isNewVisualDay || isLineLimitReached)
+                {
+                    if (sb.Length > 0 && _csvFilePath != null)
+                    {
+                        File.AppendAllText(_csvFilePath, sb.ToString());
+                        sb.Length = 0;
+                    }
+
+                    if (isNewVisualDay)
+                    {
+                        _visualDayCount++;
+                        _fileSplitIndex = 0;
+                        ModLogger.Info("Transitioned to a new visual day. Current Visual Day: " + _visualDayCount);
+                    }
+                    else if (isLineLimitReached)
+                    {
+                        _fileSplitIndex++;
+                        ModLogger.Info("Reached " + MaxLinesPerFile + " lines. Splitting file for Day " + _visualDayCount + ", Part " + _fileSplitIndex);
+                    }
+
+                    _currentLineCount = 0;
+
+                    _csvFilePath = Path.Combine(
+                        ModLogger.LogDirectoryPath,
+                        "odmatrix_" + _sessionStartTimeStr + "_Day" + _visualDayCount + "_part" + _fileSplitIndex + ".csv"
+                    );
+
+                    if (!File.Exists(_csvFilePath))
+                    {
+                        File.WriteAllText(_csvFilePath, "RecordTime,GameTimeOfDay,CitizenId,Reason,TravelerType,OriginX,OriginZ,DestX,DestZ\n");
+                    }
+                }
+
                 sb.Append(record.RecordTime).Append(',')
+                  .Append(record.GameTimeOfDay.ToString("0.0000")).Append(',')
                   .Append(record.CitizenId).Append(',')
                   .Append(record.Reason).Append(',')
                   .Append((byte)record.TravelerType).Append(',')
@@ -158,9 +213,14 @@ namespace ODMatrix.Aggregation
                   .Append(record.OriginZ).Append(',')
                   .Append(record.DestX).Append(',')
                   .Append(record.DestZ).Append('\n');
+
+                _currentLineCount++;
             }
 
-            File.AppendAllText(_csvFilePath, sb.ToString());
+            if (sb.Length > 0 && _csvFilePath != null)
+            {
+                File.AppendAllText(_csvFilePath, sb.ToString());
+            }
         }
     }
 }

@@ -29,9 +29,12 @@ namespace ODMatrix.Aggregation
         {
             try
             {
+                float currentHour = Singleton<SimulationManager>.instance.m_currentDayTimeHour;
+
                 TravelRecord record = new TravelRecord
                 {
                     RecordTime = DateTime.UtcNow.Ticks,
+                    GameTimeOfDay = currentHour / 24f,
                     CitizenId = citizenId,
                     Reason = (byte)reason,
                     TravelerType = travelerType,

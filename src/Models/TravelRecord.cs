@@ -23,6 +23,8 @@
 
         public uint CitizenId;
         public long RecordTime;
+        public float GameTimeOfDay;
+
         public byte Reason;
         public TravelerType TravelerType;
 
